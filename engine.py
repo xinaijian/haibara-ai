@@ -80,15 +80,23 @@ class ChatEngine:
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        try:
-            resp = self.client.chat.completions.create(**kwargs)
-        except Exception:
-            # 部分兼容端点不支持 response_format，自动降级重试
-            if not json_mode:
-                raise
-            kwargs.pop("response_format", None)
-            resp = self.client.chat.completions.create(**kwargs)
-        return resp.choices[0].message.content
+        content = ""
+        for attempt in range(2):
+            try:
+                resp = self.client.chat.completions.create(**kwargs)
+            except Exception:
+                # 部分兼容端点不支持 response_format，自动降级重试
+                if not json_mode:
+                    raise
+                kwargs.pop("response_format", None)
+                resp = self.client.chat.completions.create(**kwargs)
+            choice = resp.choices[0]
+            content = choice.message.content or ""
+            # 输出被 max_tokens 截断、或服务端返回空串：重试一次
+            if (content.strip() and getattr(choice, "finish_reason", "") != "length") \
+                    or attempt == 1:
+                return content
+        return content
 
     @staticmethod
     def _apply_patch(patch, data):
@@ -194,6 +202,12 @@ class ChatEngine:
 
         raw = self._chat(messages, json_mode=True)
         text, patch = self._parse(raw)
+        if not text or text == "……":
+            # 响应结构异常导致台词丢失：换一次采样再试
+            raw2 = self._chat(messages, json_mode=True)
+            text2, patch2 = self._parse(raw2)
+            if text2 and text2 != "……":
+                raw, text, patch = raw2, text2, patch2
         if not text:
             text = "……"
         self.state.apply(patch["favorability_delta"], patch["mood_delta"])
