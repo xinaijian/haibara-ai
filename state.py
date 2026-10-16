@@ -49,6 +49,14 @@ class EmotionState:
         return next(name for lo, name, _ in reversed(STAGES) if self.favorability >= lo)
 
     @property
+    def next_stage(self):
+        """返回 (下一阶段名, 还差多少好感度)；已满级返回 None。"""
+        for lo, name, _ in STAGES:
+            if self.favorability < lo:
+                return name, lo - self.favorability
+        return None
+
+    @property
     def stage_hint(self):
         return next(hint for lo, _, hint in reversed(STAGES) if self.favorability >= lo)
 

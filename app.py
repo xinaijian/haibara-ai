@@ -8,11 +8,33 @@ import gradio as gr
 from engine import ChatEngine
 
 
+def _badge(delta):
+    """本轮变化徽章：▲2 / ▼3 / —"""
+    if delta > 0:
+        return f"**▲{delta}**"
+    if delta < 0:
+        return f"**▼{abs(delta)}**"
+    return "—"
+
+
+def _status_md(s, fav_d=0, mood_d=0):
+    if s.next_stage:
+        nxt, need = s.next_stage
+        stage_line = f"关系：**{s.stage}** ｜ 再聊 **{need}** 点好感 → {nxt}"
+    else:
+        stage_line = f"关系：**{s.stage}**（已到最高阶段）"
+    return (
+        f"### 💗 好感度 {s.favorability} 　{_badge(fav_d)}\n"
+        f"{stage_line}\n\n"
+        f"### 🌗 心情 {s.mood_desc} {s.mood:+d} 　{_badge(mood_d)}"
+    )
+
+
 def respond(user_text, chat_history, engine):
     user_text = (user_text or "").strip()
     s = engine.state
     if not user_text:
-        return chat_history, "", s.favorability, s.stage, f"{s.mood_desc}({s.mood})", "", engine
+        return chat_history, "", _status_md(s), s.favorability, "", engine
     try:
         r = engine.reply(user_text)
     except Exception as e:
@@ -20,25 +42,26 @@ def respond(user_text, chat_history, engine):
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": f"⚠️ {e}"},
         ]
-        return chat_history, "", s.favorability, s.stage, f"{s.mood_desc}({s.mood})", "", engine
+        return chat_history, "", _status_md(s), s.favorability, "", engine
     chat_history = chat_history + [
         {"role": "user", "content": user_text},
         {"role": "assistant", "content": r["text"]},
     ]
     s = r["state"]
-    return chat_history, "", s.favorability, s.stage, f"{s.mood_desc}({s.mood})", r["inner_voice"], engine
+    return (chat_history, "", _status_md(s, r["fav_delta"], r["mood_delta"]),
+            s.favorability, r["inner_voice"], engine)
 
 
 def reset():
     eng = ChatEngine()
     s = eng.state
-    return [], eng, s.favorability, s.stage, f"{s.mood_desc}({s.mood})", ""
+    return [], eng, _status_md(s), s.favorability, ""
 
 
 with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
     engine = gr.State(ChatEngine())
 
-    gr.Markdown("# 灰原哀 · 情感状态智能体\n好感度与心情会随对话实时变化，试着真正走进她的内心。")
+    gr.Markdown("# 灰原哀 · 情感状态智能体\n好感度与心情会随对话实时变化，每一次真诚的交流都会让她的防线松动一点。")
 
     with gr.Row():
         with gr.Column(scale=3):
@@ -49,16 +72,16 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
                 clear = gr.Button("重置对话")
 
         with gr.Column(scale=1):
-            fav = gr.Slider(0, 100, value=10, label="好感度", interactive=False)
-            stage = gr.Textbox(label="关系阶段", value="冷淡戒备", interactive=False)
-            mood = gr.Textbox(label="心情", value="平静(0)", interactive=False)
-            inner = gr.Textbox(label="内心独白", interactive=False, lines=6,
+            status = gr.Markdown(_status_md(ChatEngine().state))
+            fav = gr.Slider(0, 100, value=10, step=1, label="好感度进度",
+                            interactive=False, show_label=True)
+            inner = gr.Textbox(label="💭 内心独白", interactive=False, lines=7,
                                placeholder="她说出口的，不一定是心里想的……")
 
-    outputs = [chatbot, msg, fav, stage, mood, inner, engine]
+    outputs = [chatbot, msg, status, fav, inner, engine]
     send.click(respond, [msg, chatbot, engine], outputs)
     msg.submit(respond, [msg, chatbot, engine], outputs)
-    clear.click(reset, None, [chatbot, engine, fav, stage, mood, inner])
+    clear.click(reset, None, [chatbot, engine, status, fav, inner])
 
 if __name__ == "__main__":
     demo.launch()
