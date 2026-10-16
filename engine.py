@@ -1,6 +1,6 @@
-"""对话引擎：LLM 调用、状态块解析、长期记忆压缩。
+"""对话引擎：LLM 调用、响应解析、情绪状态机、长期记忆与情感瞬间记忆。
 
-支持任意 OpenAI 兼容 API（DeepSeek / GPT-4o / 各类中转），
+支持任意 OpenAI 兼容 API（智谱 GLM / DeepSeek / GPT-4o / 各类中转），
 通过环境变量 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 配置。
 """
 
@@ -10,12 +10,12 @@ import re
 
 from dotenv import load_dotenv
 
-from character import build_judge_prompt, build_system_prompt
+from character import build_system_prompt
 from state import EmotionState
 
 load_dotenv()
 
-# 容错：部分模型会把闭合标签误写成 <STATE>，或漏掉闭合标签
+# 兼容旧格式：<STATE>{...}</STATE>（部分模型会把闭合标签误写成 <STATE>）
 STATE_RE = re.compile(r"<STATE>\s*(\{.*?\})\s*(?:</STATE>|<STATE>|$)", re.S)
 STATE_TAG_RE = re.compile(r"</?STATE>")
 
@@ -26,11 +26,27 @@ FACT_PROMPT = (
 )
 
 
+def _memory_tag(fav_delta, mood_delta):
+    """根据情绪增量给记忆瞬间归类。"""
+    if fav_delta <= -2:
+        return "受伤"
+    if mood_delta <= -6:
+        return "难过"
+    if fav_delta >= 3:
+        return "心动"
+    if fav_delta >= 2:
+        return "温暖"
+    if mood_delta >= 7:
+        return "开心"
+    return None
+
+
 class ChatEngine:
     def __init__(self, window=24):
         self.state = EmotionState()
-        self.history = []   # 近期对话 [{"role": ..., "content": ...}]
-        self.facts = []     # 长期记忆：事实清单
+        self.history = []          # 近期对话 [{"role": ..., "content": ...}]
+        self.facts = []            # 长期记忆：事实清单
+        self.memories = []         # 情感瞬间：[{"tag": ..., "note": ...}]
         self.window = window
         self._client = None
 
@@ -47,15 +63,15 @@ class ChatEngine:
                 )
             self._client = OpenAI(
                 api_key=api_key,
-                base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
+                base_url=os.getenv("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
             )
         return self._client
 
     @property
     def model(self):
-        return os.getenv("LLM_MODEL", "deepseek-chat")
+        return os.getenv("LLM_MODEL", "glm-5.3-flash")
 
-    def _chat(self, messages, temperature=0.85, max_tokens=1500, json_mode=False):
+    def _chat(self, messages, temperature=0.9, max_tokens=2000, json_mode=False):
         kwargs = dict(
             model=self.model,
             messages=messages,
@@ -66,97 +82,122 @@ class ChatEngine:
             kwargs["response_format"] = {"type": "json_object"}
         try:
             resp = self.client.chat.completions.create(**kwargs)
-        except Exception as e:
-            # 部分兼容端点不支持 response_format 或遇限流，自动降级重试
+        except Exception:
+            # 部分兼容端点不支持 response_format，自动降级重试
             if not json_mode:
                 raise
-            self.last_fallback_error = f"{type(e).__name__}: {str(e)[:200]}"
             kwargs.pop("response_format", None)
             resp = self.client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content
 
-    # 兜底：老格式 <STATE>{...}</STATE>（含畸形闭合标签）
-    FLAT_JSON_RE = re.compile(r'\{\s*"favorability_delta".*?\}', re.S)
-
     @staticmethod
-    def _apply_patch(patch, data, text):
+    def _apply_patch(patch, data):
         try:
             patch["favorability_delta"] = int(data.get("favorability_delta", 0))
             patch["mood_delta"] = int(data.get("mood_delta", 0))
         except (ValueError, TypeError):
             pass
-        iv = data.get("inner_voice", "")
-        if isinstance(iv, str):
-            patch["inner_voice"] = iv.strip()
-        reply = data.get("reply") or data.get("text") or ""
-        return str(reply).strip()
+        for key in ("inner_voice", "memory"):
+            val = data.get(key, "")
+            if isinstance(val, str):
+                patch[key] = val.strip()
+        return str(data.get("reply") or data.get("text") or "").strip()
 
     @staticmethod
     def _parse(raw):
-        """把回复拆成 (台词正文, 状态增量)。依次尝试：整体JSON → 截取JSON → STATE标签 → 裸JSON。"""
-        patch = {"favorability_delta": 0, "mood_delta": 0, "inner_voice": ""}
+        """解析模型响应为 (台词, patch)。容错：整体JSON → 嵌入JSON → STATE标签 → 裸JSON。"""
+        patch = {"favorability_delta": 0, "mood_delta": 0,
+                 "inner_voice": "", "memory": ""}
 
-        # 路径 1：整体即 JSON（JSON 模式的正常输出）→ 台词取 reply 字段
+        # 路径 1：整体即 JSON（JSON 模式的正常输出）
         stripped = raw.strip()
         if stripped.startswith("{") and stripped.endswith("}"):
             try:
                 data = json.loads(stripped)
                 if isinstance(data, dict) and "favorability_delta" in data:
-                    return ChatEngine._apply_patch(patch, data, ""), patch
+                    return ChatEngine._apply_patch(patch, data), patch
             except json.JSONDecodeError:
                 pass
 
-        # 路径 2：JSON 裹在台词/代码块中间 → 台词取 JSON 之外的残片
+        # 路径 2：JSON 裹在台词/代码块中间
         start, end = raw.find("{"), raw.rfind("}")
         if start != -1 and end > start and (start > 0 or end < len(stripped) - 1):
             try:
                 data = json.loads(raw[start:end + 1])
                 if isinstance(data, dict) and "favorability_delta" in data:
-                    ChatEngine._apply_patch(patch, data, "")
-                    leftover = STATE_TAG_RE.sub("", raw[:start] + raw[end + 1:]).strip()
-                    return leftover, patch
+                    ChatEngine._apply_patch(patch, data)
+                    return STATE_TAG_RE.sub("", raw[:start] + raw[end + 1:]).strip(), patch
             except json.JSONDecodeError:
                 pass
 
-        # 路径 3：<STATE> 标签格式（兼容旧 prompt/其他模型）
+        # 路径 3/4：<STATE> 标签 或 裸 JSON（兼容老格式/其他模型）
         m = STATE_RE.search(raw)
         if m:
-            block = m.group(1)
-            text = STATE_TAG_RE.sub("", raw[:m.start()] + raw[m.end():]).strip()
+            block, text = m.group(1), raw[:m.start()] + raw[m.end():]
+            text = STATE_TAG_RE.sub("", text).strip()
         else:
-            # 路径 4：裸扁平 JSON
-            fm = ChatEngine.FLAT_JSON_RE.search(raw)
+            fm = re.search(r'\{\s*"favorability_delta".*?\}', raw, re.S)
             if not fm:
-                return raw.strip(), patch
-            block = fm.group(0)
-            text = raw[:fm.start()] + raw[fm.end():]
+                # 路径 5：JSON 被 max_tokens 截断——正则抢救各字段残片
+                return ChatEngine._salvage(raw, patch)
+            block, text = fm.group(0), (raw[:fm.start()] + raw[fm.end():]).strip()
         try:
             data = json.loads(block)
             if isinstance(data, dict):
-                text = ChatEngine._apply_patch(patch, data, text)
+                text = ChatEngine._apply_patch(patch, data) or text
         except json.JSONDecodeError:
             iv = re.search(r'"inner_voice"\s*:\s*"([^"]*)"', block)
             if iv:
                 patch["inner_voice"] = iv.group(1).strip()
         return text, patch
 
+    @staticmethod
+    def _unescape(s):
+        try:
+            return json.loads(f'"{s}"')
+        except json.JSONDecodeError:
+            return s.replace('\\"', '"').replace("\\n", "\n").replace("\\'", "'")
+
+    @staticmethod
+    def _salvage(raw, patch):
+        """JSON 截断时的最后防线：把能捞到的字段残片捞回来。"""
+        text = ""
+        m = re.search(r'"reply"\s*:\s*"(.*?)"\s*[,}]', raw, re.S)
+        if not m:
+            m = re.search(r'"reply"\s*:\s*"(.+)$', raw, re.S)
+        if m:
+            text = ChatEngine._unescape(m.group(1)).strip()
+        for key, name in (("inner_voice", "inner_voice"), ("memory", "memory")):
+            mm = re.search(rf'"{key}"\s*:\s*"([^"]*)"', raw)
+            if mm and mm.group(1).strip():
+                patch[name] = ChatEngine._unescape(mm.group(1)).strip()
+        for key, name in (("favorability_delta", "favorability_delta"),
+                          ("mood_delta", "mood_delta")):
+            mm = re.search(rf'"{key}"\s*:\s*(-?\d+)', raw)
+            if mm:
+                try:
+                    patch[name] = int(mm.group(1))
+                except ValueError:
+                    pass
+        return text or "……", patch
+
     def reply(self, user_text):
-        """完整跑一轮对话，返回 {text, inner_voice, fav/mood_delta, state}。"""
+        """完整跑一轮对话，返回 {text, inner_voice, fav/mood_delta, memory, state}。"""
         if not os.getenv("LLM_API_KEY"):
             return self._mock_reply(user_text)
-        system = build_system_prompt(self.state, self.facts)
+
+        # 单次调用：台词、内心、状态、记忆出自同一个"脑子"，才有口是心非的张力
+        system = build_system_prompt(self.state, self.facts, self.memories)
         messages = [{"role": "system", "content": system}]
         messages += self.history[-self.window:]
         messages.append({"role": "user", "content": user_text})
 
-        # 第一步：角色自由生成台词（不约束格式，保证沉浸感）
-        text = self._chat(messages).strip()
-        if '"favorability_delta"' in text or "<STATE>" in text:
-            text, _ = self._parse(text)
-
-        # 第二步：独立"情绪判官"产出状态 JSON（短输入 + JSON 模式，格式稳定，评分更诚实）
-        patch = self._judge(user_text, text)
+        raw = self._chat(messages, json_mode=True)
+        text, patch = self._parse(raw)
+        if not text:
+            text = "……"
         self.state.apply(patch["favorability_delta"], patch["mood_delta"])
+        self._remember(patch)
 
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": text})
@@ -165,52 +206,52 @@ class ChatEngine:
         return {
             "text": text,
             "inner_voice": patch["inner_voice"],
+            "memory": patch["memory"],
             "fav_delta": patch["favorability_delta"],
             "mood_delta": patch["mood_delta"],
             "state": self.state,
         }
 
-    def _judge(self, user_text, reply_text):
-        """第二步：调用独立判官评估情绪增量。失败重试一次，再失败静默返回 0。"""
-        prompt = build_judge_prompt(self.state, user_text, reply_text)
-        for _ in range(2):
-            try:
-                raw = self._chat(
-                    [{"role": "user", "content": prompt}],
-                    temperature=0.3, max_tokens=300, json_mode=True,
-                )
-            except Exception:
-                continue
-            _, patch = self._parse(raw)
-            if patch["inner_voice"] or patch["favorability_delta"] or patch["mood_delta"]:
-                return patch
-        return {"favorability_delta": 0, "mood_delta": 0, "inner_voice": ""}
+    def _remember(self, patch):
+        """高情绪波动的瞬间存入"心里的余温"，优先保留强烈记忆。"""
+        note = patch.get("memory", "").strip()
+        if not note:
+            return
+        tag = _memory_tag(patch["favorability_delta"], patch["mood_delta"])
+        if tag is None:
+            return  # 情绪波动不够强：不记录，避免记忆泛滥
+        self.memories.append({"tag": tag, "note": note})
+        self.memories = self.memories[-8:]
 
     # 无 API Key 时的演示回复：随对话轮次推进，好感度逐步上升
     _MOCK_SCRIPT = [
-        ("……你好。有什么事吗？如果只是想闲聊，我劝你去找侦探团那帮小鬼。", 1, 0,
-         "又是一个自来熟的家伙。"),
+        ("……你好。有什么事吗？如果只是想闲聊，我劝你去找侦探团那帮小鬼。", 1, 2,
+         "又是一个自来熟的家伙。", ""),
         ("哼，至少你比柯南那家伙有礼貌一点。（低头翻动书页）说吧，想聊什么？", 2, 5,
-         "……倒也不讨厌。"),
-        ("（停下手中的实验记录）你对化学感兴趣？……呵，难得。APTX 的事我不能多说，但普通的有机化学问题，我可以教你。", 3, 8,
-         "认真地听人说话的感觉，久违了。"),
-        ("叫我哀就行。（移开视线）……只是叫起来方便而已，别多想。", 3, 5,
-         "心跳有点快……错觉吧。"),
+         "……倒也不讨厌。", "他认真说话的样子，倒不讨厌。"),
+        ("（停下手中的实验记录）你对化学感兴趣？……呵，难得。普通的有机化学问题，我可以教你。", 2, 7,
+         "认真地听人说话的感觉，久违了。", ""),
+        ("叫我哀就行。（移开视线）……只是叫起来方便而已，别多想。", 3, 6,
+         "心跳有点快……错觉吧。", "他递来热可可的那天，指尖碰过杯壁，温度留了很久。"),
         ("（轻声）如果早点遇到像你这样的人，也许一切都会不一样。……没什么，自言自语罢了。", 2, 5,
-         "这样的日子，能持续下去就好了。"),
+         "这样的日子，能持续下去就好了。", ""),
     ]
 
     def _mock_reply(self, user_text):
         idx = min(len(self.history) // 2, len(self._MOCK_SCRIPT) - 1)
-        text, fav_d, mood_d, inner = self._MOCK_SCRIPT[idx]
+        text, fav_d, mood_d, inner, memory_note = self._MOCK_SCRIPT[idx]
         self.state.apply(fav_d, mood_d)
+        if memory_note:
+            self.memories.append({"tag": "温暖", "note": memory_note})
+            self.memories = self.memories[-8:]
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": text})
         return {"text": text, "inner_voice": inner + "（演示模式）",
-                "fav_delta": fav_d, "mood_delta": mood_d, "state": self.state}
+                "memory": memory_note, "fav_delta": fav_d, "mood_delta": mood_d,
+                "state": self.state}
 
     def _consolidate(self):
-        """旧对话溢出窗口时，压缩成长期记忆。"""
+        """旧对话溢出窗口时，压缩成长期事实记忆。"""
         overflow = len(self.history) - self.window
         if overflow < 12:
             return

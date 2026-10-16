@@ -42,7 +42,9 @@ class EmotionState:
         fav_delta = _clamp(int(fav_delta), -MAX_FAV_DELTA, MAX_FAV_DELTA)
         mood_delta = _clamp(int(mood_delta), -MAX_MOOD_DELTA, MAX_MOOD_DELTA)
         self.favorability = _clamp(self.favorability + fav_delta, 0, 100)
-        self.mood = _clamp(self.mood + mood_delta, -100, 100)
+        # 心情有"余韵"：保留四成上一轮情绪，再叠加本轮影响。
+        # 没有新刺激时心情会自然平复；连续的温柔或冒犯则会累积。
+        self.mood = _clamp(round(self.mood * 0.4) + mood_delta, -100, 100)
 
     @property
     def stage(self):
