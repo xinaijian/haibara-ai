@@ -19,21 +19,29 @@
 ```mermaid
 flowchart LR
     U[用户输入] --> E[对话引擎 engine.py]
-    E --> P["System Prompt 组装<br>角色卡 + 当前情绪状态 + 长期记忆"]
-    P --> L[LLM API]
-    L --> R["解析回复<br>台词正文 + STATE JSON"]
-    R --> S["情绪状态机 state.py<br>好感度 / 心情 / 关系阶段"]
-    R --> UI["Gradio 界面 app.py<br>对话 + 状态面板 + 内心独白"]
+    E --> P["System Prompt 组装<br>角色卡 + 当前情绪状态<br>事实记忆 + 心里的余温"]
+    P --> L["LLM 单次调用<br>JSON 模式"]
+    L --> R["五路容错解析<br>台词 + 内心 + 增量 + 记忆"]
+    R --> S["情绪状态机 state.py<br>好感度 / 心情惯性 / 阶段"]
+    R --> M["双层记忆<br>事实清单 + 情感瞬间"]
+    R --> UI["Gradio 界面 app.py<br>对话 + 状态面板 + 内心独白 + 余温"]
     S --> P
+    M --> P
 ```
 
-每轮对话，LLM 除了输出角色台词，还会输出一个状态块：
+每轮对话，LLM 在同一个 JSON 里给出台词、内心独白、情绪增量与可选的情感记忆：
 
-```xml
-<STATE>{"favorability_delta": 2, "mood_delta": 5, "inner_voice": "……哼，倒也不是完全没意思。"}</STATE>
+```json
+{
+  "reply": "（指尖在杯壁停了一瞬）……甜了点。",
+  "favorability_delta": 2,
+  "mood_delta": 5,
+  "inner_voice": "笨蛋，谁准你记住的……",
+  "memory": "他记住了她说过的'偏咸'，第二天递来甜口的蛋卷。"
+}
 ```
 
-程序端解析后更新状态机，并在下一轮把新状态注入 Prompt，形成闭环。
+程序端更新状态机（心情带惯性衰减）、沉淀记忆，并在下一轮把新状态与记忆注入 Prompt，形成闭环。解析器对模型不规范输出有五级容错：整体 JSON → 嵌入 JSON → STATE 标签 → 裸 JSON → 截断正则抢救。
 
 ## 快速开始
 
@@ -59,9 +67,9 @@ python cli.py
 |---|---|---|
 | `LLM_API_KEY` | API 密钥 | 不填则进入演示模式 |
 | `LLM_BASE_URL` | OpenAI 兼容接口地址 | `https://open.bigmodel.cn/api/paas/v4/` |
-| `LLM_MODEL` | 模型名 | `glm-4-flash`（智谱，永久免费） |
+| `LLM_MODEL` | 模型名 | `glm-5.3-flash`（智谱，免费） |
 
-免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。`glm-4-flash` 与 `glm-4.7-flash` 均可免费调用（后者高峰期限流 429 时换回前者）。
+免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。新账号有免费 token 额度，`glm-5.3-flash` 的角色扮演细腻度与 JSON 稳定性都明显优于旧版 `glm-4-flash`；若该模型临时限流，可把 `LLM_MODEL` 改成 `glm-4-flash` 兜底。
 
 ## 项目结构
 
@@ -69,7 +77,7 @@ python cli.py
 haibara-ai/
 ├── app.py          # Gradio 网页界面
 ├── cli.py          # 终端试聊工具（调人设用）
-├── engine.py       # 对话引擎：LLM 调用、状态解析、长期记忆
+├── engine.py       # 对话引擎：LLM 调用、五路容错解析、事实与情感双层记忆
 ├── character.py    # 灰原哀角色卡 + System Prompt 模板
 ├── state.py        # 情绪状态机（好感度 / 心情 / 阶段）
 ├── .env.example    # 配置模板
@@ -80,6 +88,8 @@ haibara-ai/
 
 - **人设不像 / 语气不对**：只改 [character.py](character.py) 里的角色卡，用 `python cli.py` 快速验证
 - **好感涨太快或太慢**：改 [state.py](state.py) 里的 `MAX_FAV_DELTA` 和各阶段阈值
+- **心情平复太快或太慢**：改 [state.py](state.py) 中 `apply()` 的惯性系数（当前保留 0.4 上一轮心情）
+- **哪些瞬间值得她记住**：改 [engine.py](engine.py) 的 `_memory_tag()` 情绪阈值
 
 ## Roadmap
 
