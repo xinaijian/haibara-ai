@@ -46,25 +46,33 @@ def respond(user_text, chat_history, engine):
     user_text = (user_text or "").strip()
     s = engine.state
     if not user_text:
-        return (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
-                _memories_md(engine.memories), engine)
-    try:
-        r = engine.reply(user_text)
-    except Exception as e:
-        chat_history = chat_history + [
-            {"role": "user", "content": user_text},
-            {"role": "assistant", "content": f"⚠️ {e}"},
-        ]
-        return (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
-                _memories_md(engine.memories), engine)
-    chat_history = chat_history + [
+        yield (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
+               _memories_md(engine.memories), engine)
+        return
+    history = chat_history + [
         {"role": "user", "content": user_text},
-        {"role": "assistant", "content": r["text"]},
+        {"role": "assistant", "content": ""},
     ]
-    s = r["state"]
-    return (chat_history, "", render_avatar(s, r["fav_delta"], r["mood_delta"]),
-            _status_md(s, r["fav_delta"], r["mood_delta"]), s.favorability,
-            r["inner_voice"], _memories_md(engine.memories), engine)
+    final = None
+    try:
+        for r in engine.reply_stream(user_text):
+            if "partial" in r:
+                # 流式阶段：只逐字更新对话气泡，右侧面板保持不动
+                history[-1]["content"] = r["partial"]
+                yield (history, "", gr.update(), gr.update(), gr.update(),
+                       gr.update(), gr.update(), engine)
+            else:
+                final = r
+    except Exception as e:
+        history[-1]["content"] = f"⚠️ {e}"
+        yield (history, "", render_avatar(s), _status_md(s), s.favorability, "",
+               _memories_md(engine.memories), engine)
+        return
+    s = final["state"]
+    history[-1]["content"] = final["text"]
+    yield (history, "", render_avatar(s, final["fav_delta"], final["mood_delta"]),
+           _status_md(s, final["fav_delta"], final["mood_delta"]), s.favorability,
+           final["inner_voice"], _memories_md(engine.memories), engine)
 
 
 def reset():

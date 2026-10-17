@@ -80,23 +80,41 @@ class ChatEngine:
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        content = ""
-        for attempt in range(2):
-            try:
-                resp = self.client.chat.completions.create(**kwargs)
-            except Exception:
-                # 部分兼容端点不支持 response_format，自动降级重试
-                if not json_mode:
-                    raise
-                kwargs.pop("response_format", None)
-                resp = self.client.chat.completions.create(**kwargs)
-            choice = resp.choices[0]
-            content = choice.message.content or ""
-            # 输出被 max_tokens 截断、或服务端返回空串：重试一次
-            if (content.strip() and getattr(choice, "finish_reason", "") != "length") \
-                    or attempt == 1:
-                return content
-        return content
+        try:
+            resp = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            # 部分兼容端点不支持 response_format，自动降级重试
+            if not json_mode:
+                raise
+            kwargs.pop("response_format", None)
+            resp = self.client.chat.completions.create(**kwargs)
+        return resp.choices[0].message.content
+
+    def _chat_stream(self, messages, temperature=0.9, max_tokens=2000, json_mode=False):
+        """流式调用：逐段 yield 增量文本。"""
+        kwargs = dict(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        try:
+            stream = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            # 部分兼容端点不支持 response_format，自动降级重试
+            if not json_mode:
+                raise
+            kwargs.pop("response_format", None)
+            stream = self.client.chat.completions.create(**kwargs)
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
     @staticmethod
     def _apply_patch(patch, data):
@@ -167,6 +185,31 @@ class ChatEngine:
             return s.replace('\\"', '"').replace("\\n", "\n").replace("\\'", "'")
 
     @staticmethod
+    def _partial_reply(raw):
+        """从（可能残缺的）流式 JSON 中实时截取 reply 台词前缀，供逐字显示。"""
+        m = re.search(r'"reply"\s*:\s*"', raw)
+        if not m:
+            return ""
+        s = raw[m.end():]
+        # 截到第一个未转义的闭合引号（若已出现）
+        i, end = 0, len(s)
+        while i < len(s):
+            if s[i] == "\\":
+                i += 2
+                continue
+            if s[i] == '"':
+                end = i
+                break
+            i += 1
+        s = s[:end]
+        # 末尾可能有残缺的转义序列，修掉以保证可解码
+        trailing = len(s) - len(s.rstrip("\\"))
+        if trailing % 2 == 1:
+            s = s[:-1]
+        s = re.sub(r"\\u[0-9a-fA-F]{0,3}$", "", s)
+        return ChatEngine._unescape(s)
+
+    @staticmethod
     def _salvage(raw, patch):
         """JSON 截断时的最后防线：把能捞到的字段残片捞回来。"""
         text = ""
@@ -202,12 +245,6 @@ class ChatEngine:
 
         raw = self._chat(messages, json_mode=True)
         text, patch = self._parse(raw)
-        if not text or text == "……":
-            # 响应结构异常导致台词丢失：换一次采样再试
-            raw2 = self._chat(messages, json_mode=True)
-            text2, patch2 = self._parse(raw2)
-            if text2 and text2 != "……":
-                raw, text, patch = raw2, text2, patch2
         if not text:
             text = "……"
         self.state.apply(patch["favorability_delta"], patch["mood_delta"])
@@ -218,6 +255,47 @@ class ChatEngine:
         self._consolidate()
 
         return {
+            "text": text,
+            "inner_voice": patch["inner_voice"],
+            "memory": patch["memory"],
+            "fav_delta": patch["favorability_delta"],
+            "mood_delta": patch["mood_delta"],
+            "state": self.state,
+        }
+
+    def reply_stream(self, user_text):
+        """流式版 reply：先逐字 yield {"partial": 台词前缀}，最后 yield 完整结果 dict。"""
+        if not os.getenv("LLM_API_KEY"):
+            r = self._mock_reply(user_text)
+            yield {"partial": r["text"]}
+            yield r
+            return
+
+        system = build_system_prompt(self.state, self.facts, self.memories)
+        messages = [{"role": "system", "content": system}]
+        messages += self.history[-self.window:]
+        messages.append({"role": "user", "content": user_text})
+
+        raw = ""
+        last = ""
+        for chunk in self._chat_stream(messages, json_mode=True):
+            raw += chunk
+            partial = self._partial_reply(raw)
+            if partial != last:
+                last = partial
+                yield {"partial": partial}
+
+        text, patch = self._parse(raw)
+        if not text:
+            text = last.strip() or "……"
+        self.state.apply(patch["favorability_delta"], patch["mood_delta"])
+        self._remember(patch)
+
+        self.history.append({"role": "user", "content": user_text})
+        self.history.append({"role": "assistant", "content": text})
+        self._consolidate()
+
+        yield {
             "text": text,
             "inner_voice": patch["inner_voice"],
             "memory": patch["memory"],
