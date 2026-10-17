@@ -68,44 +68,54 @@ def _expression(state, fav_d, mood_d):
 
 def _brows(expr):
     if expr == "alert":
-        return ('<path d="M 78 112 L 92 116"/><path d="M 148 116 L 162 112"/>')
+        return ('<path d="M 76 115.5 L 92 120"/><path d="M 148 120 L 164 115.5"/>')
     if expr == "hurt":
-        return ('<path d="M 78 116 L 92 113"/><path d="M 148 113 L 162 116"/>')
+        return ('<path d="M 76 120.5 L 92 116.5"/><path d="M 148 116.5 L 164 120.5"/>')
     if expr in ("happy", "soft", "shy"):
-        return ('<path d="M 78 113 Q 85 111 92 113"/><path d="M 148 113 Q 155 111 162 113"/>')
-    return '<path d="M 78 114 L 92 112"/><path d="M 148 112 L 162 114"/>'
+        return ('<path d="M 76 117.5 Q 84 115.5 92 117"/>'
+                '<path d="M 148 117 Q 156 115.5 164 117.5"/>')
+    return '<path d="M 76 118 L 92 117"/><path d="M 148 117 L 164 118"/>'
 
 
 def _open_eye(cx, lid, glance, side):
-    """睁开的动漫大眼：粗黑眼眶 + 蓝瞳。lid 越大眼睑垂得越低（越冷淡），
-    glance 为瞳孔侧移（害羞瞥开），side 决定外眼角下垂小睫毛的方向。"""
+    """动漫大眼：蓝瞳全露 + 粗黑上眼线（外端低、内端高 → 倦态下垂）。
+    lid 为眼线外端 y：越大越慵懒，越小睁得越开。side=±1 指向外侧。"""
     ix = cx + glance
     return (
-        f'<ellipse cx="{cx}" cy="138" rx="15.5" ry="13.5" fill="{_LASH}"/>'
-        f'<ellipse cx="{cx}" cy="138.5" rx="13.8" ry="12" fill="#ffffff"/>'
-        f'<ellipse cx="{ix}" cy="140" rx="9" ry="9" fill="{_IRIS}"/>'
-        f'<ellipse cx="{ix}" cy="140" rx="3.6" ry="4.2" fill="#14121c"/>'
-        f'<circle cx="{ix - 3.5}" cy="135.5" r="2.8" fill="#ffffff"/>'
-        f'<circle cx="{ix + 3.5}" cy="144.5" r="1.4" fill="#ffffff" opacity="0.9"/>'
-        # 上眼睑遮罩（肤色，决定冷淡程度）+ 下缘睫毛线
-        f'<path d="M {cx - 15.5} 124.5 Q {cx} 120 {cx + 15.5} 124.5 L {cx + 15.5} {lid} '
-        f'Q {cx} {lid - 4} {cx - 15.5} {lid} Z" fill="{_SKIN}"/>'
-        f'<path d="M {cx - 15.5} {lid} Q {cx} {lid - 4} {cx + 15.5} {lid}" '
-        f'stroke="{_LASH}" stroke-width="2.4" fill="none" stroke-linecap="round"/>'
-        # 外眼角微垂（她的标志倦态）
-        f'<path d="M {cx + side * 14} 129.5 L {cx + side * 18} 133" stroke="{_LASH}" '
-        f'stroke-width="3" fill="none" stroke-linecap="round"/>'
+        # 眼眶（深色底） + 眼白
+        f'<ellipse cx="{cx}" cy="141.5" rx="16" ry="14.4" fill="{_LASH}"/>'
+        f'<ellipse cx="{cx}" cy="141.5" rx="14.9" ry="13.4" fill="#ffffff"/>'
+        # 虹膜：亮蓝主体 + 深蓝上半环 + 底部反光 + 瞳孔 + 双高光
+        f'<circle cx="{ix}" cy="142.5" r="10.4" fill="{_IRIS}"/>'
+        f'<path d="M {ix - 10.4} 142.5 A 10.4 10.4 0 0 1 {ix + 10.4} 142.5 Z" fill="#2e5c99"/>'
+        f'<ellipse cx="{ix}" cy="149" rx="5.6" ry="3" fill="#7db4e6"/>'
+        f'<circle cx="{ix}" cy="142.5" r="4.2" fill="#151223"/>'
+        f'<circle cx="{ix - 3.4}" cy="138.8" r="2.8" fill="#ffffff"/>'
+        f'<circle cx="{ix + 3.8}" cy="146.2" r="1.5" fill="#ffffff" opacity="0.9"/>'
+        # 上眼睑遮罩（肤色）：外端下垂、内端高
+        f'<path d="M {cx - side * 17.5} 125.5 L {cx + side * 18.5} 122.5 '
+        f'L {cx + side * 18.5} {lid + 3} Q {cx} {lid - 1.5} {cx - side * 17.5} 130.5 Z" '
+        f'fill="{_SKIN}"/>'
+        # 粗黑上眼线沿眼睑下缘
+        f'<path d="M {cx + side * 18.5} {lid + 3} Q {cx} {lid - 1.5} {cx - side * 17.5} 130.5" '
+        f'stroke="{_LASH}" stroke-width="4" fill="none" stroke-linecap="round"/>'
+        # 外眼角下垂小睫毛（她的标志倦态）
+        f'<path d="M {cx + side * 17} {lid + 2} L {cx + side * 22.5} {lid + 6.5}" '
+        f'stroke="{_LASH}" stroke-width="3.2" fill="none" stroke-linecap="round"/>'
+        # 下睫毛（外半段，轻）
+        f'<path d="M {cx + side * 7} 155.8 Q {cx + side * 13} 155.2 {cx + side * 16.5} 151.8" '
+        f'stroke="{_LASH}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.85"/>'
     )
 
 
 def _eyes(expr):
     if expr == "happy":  # 笑弯眼
         return (
-            f'<path d="M 75 140 Q 88 128 101 140" stroke="{_LASH}" stroke-width="4" '
+            f'<path d="M 74 142 Q 88 128 102 142" stroke="{_LASH}" stroke-width="4" '
             f'fill="none" stroke-linecap="round"/>'
-            f'<path d="M 139 140 Q 152 128 165 140" stroke="{_LASH}" stroke-width="4" '
+            f'<path d="M 138 142 Q 152 128 166 142" stroke="{_LASH}" stroke-width="4" '
             f'fill="none" stroke-linecap="round"/>')
-    lid = {"cold": 136.5, "alert": 138.5, "hurt": 135.5, "shy": 135, "soft": 131}.get(expr, 134)
+    lid = {"cold": 132.5, "alert": 127, "hurt": 135.5, "shy": 132, "soft": 131}.get(expr, 132.5)
     glance = 2.6 if expr == "shy" else 0
     return (f'<g class="ha-eyes">{_open_eye(88, lid, glance, -1)}'
             f'{_open_eye(152, lid, glance, 1)}</g>')
@@ -129,8 +139,8 @@ def _blush(expr):
     opacity = {"soft": 0.35, "happy": 0.6, "shy": 0.85}.get(expr)
     if not opacity:
         return ""
-    return (f'<ellipse cx="72" cy="154" rx="9" ry="4.5" fill="{_BLUSH}" opacity="{opacity}"/>'
-            f'<ellipse cx="168" cy="154" rx="9" ry="4.5" fill="{_BLUSH}" opacity="{opacity}"/>')
+    return (f'<ellipse cx="80" cy="155" rx="8" ry="4" fill="{_BLUSH}" opacity="{opacity}"/>'
+            f'<ellipse cx="160" cy="155" rx="8" ry="4" fill="{_BLUSH}" opacity="{opacity}"/>')
 
 
 def _extras(expr):
@@ -157,15 +167,10 @@ def render_avatar(state, fav_delta=0, mood_delta=0):
 <style>{_CSS}</style>
   <circle class="ha-aura" cx="120" cy="140" r="106" fill="{aura}" style="transform-origin:120px 140px"/>
   <g class="ha-breathe">
-    <!-- 后发：蓬松巨帽 + 发尾外翘 -->
-    <path d="M 44 148 Q 30 128 40 108 Q 30 84 46 66 Q 44 44 68 40 Q 66 22 96 24
-             Q 108 10 132 22 Q 158 12 168 32 Q 192 30 194 54 Q 208 62 200 84
-             Q 210 104 200 124 Q 208 142 196 152 Q 170 168 120 170 Q 70 168 44 148 Z"
+    <!-- 后发：顺滑圆穹顶 -->
+    <path d="M 54 142 Q 40 100 62 66 Q 58 30 96 22 Q 120 10 146 22 Q 184 30 180 66
+             Q 202 100 188 142 Q 184 158 170 160 Q 120 170 70 160 Q 56 158 54 142 Z"
           fill="{_HAIR}"/>
-    <path d="M 52 146 Q 34 150 30 168 Q 44 164 54 158 Z" fill="{_HAIR}"/>
-    <path d="M 58 160 Q 44 168 44 184 Q 56 176 64 170 Z" fill="{_HAIR}"/>
-    <path d="M 188 146 Q 206 150 210 168 Q 196 164 186 158 Z" fill="{_HAIR}"/>
-    <path d="M 182 160 Q 196 168 196 184 Q 184 176 176 170 Z" fill="{_HAIR}"/>
     <!-- 白大褂 + 红衬衫（背手站姿） -->
     <path d="M 100 192 Q 120 186 140 192 L 142 224 Q 120 230 98 224 Z" fill="{_SHIRT}"/>
     <path d="M 98 192 Q 82 198 80 218 L 82 244 Q 94 250 104 244 L 106 214 Q 104 200 102 194 Z"
@@ -180,24 +185,37 @@ def render_avatar(state, fav_delta=0, mood_delta=0):
     <rect x="126" y="238" width="8" height="14" rx="3" fill="{_SKIN}"/>
     <ellipse cx="109" cy="254" rx="11" ry="6" fill="{_SHOE}"/>
     <ellipse cx="131" cy="254" rx="11" ry="6" fill="{_SHOE}"/>
-    <!-- 耳朵 -->
-    <ellipse cx="56" cy="132" rx="7" ry="9" fill="{_SKIN}"/>
-    <ellipse cx="184" cy="132" rx="7" ry="9" fill="{_SKIN}"/>
     <!-- 脸 -->
     <ellipse cx="120" cy="132" rx="62" ry="52" fill="{_SKIN}"/>
-    <!-- 刘海：侧分碎发 + 中垂一缕（她的标志） -->
-    <path d="M 64 128 Q 56 84 92 70 Q 118 56 150 64 Q 178 70 180 100 Q 182 116 172 126
-             Q 168 108 158 100 Q 160 118 148 124 Q 148 104 138 98 Q 138 116 128 122
-             Q 124 104 116 100 Q 110 118 100 124 Q 100 106 92 104 Q 84 118 76 126
-             Q 70 120 64 128 Z" fill="{_HAIR}"/>
-    <path d="M 118 96 Q 115 118 120 132 Q 125 118 124 98 Z" fill="{_HAIR}"/>
-    <path d="M 64 110 Q 56 140 66 164 Q 74 166 74 156 Q 66 136 74 118 Z" fill="{_HAIR}"/>
-    <path d="M 176 110 Q 184 140 174 164 Q 166 166 166 156 Q 174 136 166 118 Z" fill="{_HAIR}"/>
-    <!-- 发丝光泽 -->
-    <path d="M 78 60 Q 96 44 122 42" stroke="{_HAIR_SHEEN}" stroke-width="5"
+    <!-- 侧发：沿脸颊垂落到下巴，发梢波浪外翘 -->
+    <path d="M 60 92 Q 46 116 50 140 Q 53 162 44 178 Q 54 174 58 186 Q 64 178 70 187
+             Q 74 172 73 156 Q 72 126 76 100 Z" fill="{_HAIR}"/>
+    <path d="M 180 92 Q 194 116 190 140 Q 187 162 196 178 Q 186 174 182 186 Q 176 178 170 187
+             Q 166 172 167 156 Q 168 126 164 100 Z" fill="{_HAIR}"/>
+    <g stroke="{_HAIR_DARK}" stroke-width="1.8" fill="none" opacity="0.5" stroke-linecap="round">
+      <path d="M 57 104 Q 51 130 53 156"/>
+      <path d="M 183 104 Q 189 130 187 156"/>
+    </g>
+    <!-- 刘海：覆盖额头的波浪碎发（尖端朝下） -->
+    <path d="M 64 112 Q 56 82 88 71 Q 120 58 152 67 Q 180 78 176 112
+             Q 172 118 168 120 Q 163 110 157 104 Q 151 112 146 122
+             Q 142 112 139 104 Q 135 114 132 124 Q 127 114 123 106
+             Q 118 114 114 122 Q 109 112 105 104 Q 100 110 96 118
+             Q 90 110 84 102 Q 78 108 72 116 Q 68 116 64 112 Z" fill="{_HAIR}"/>
+    <!-- 中垂一缕（她的标志） -->
+    <path d="M 118 92 Q 114 112 119 130 Q 124 114 123 94 Z" fill="{_HAIR}"/>
+    <!-- 发丝光泽 + 刘海流向 -->
+    <path d="M 80 52 Q 102 34 128 32" stroke="{_HAIR_SHEEN}" stroke-width="5"
           fill="none" opacity="0.5" stroke-linecap="round"/>
+    <g stroke="{_HAIR_DARK}" stroke-width="1.8" fill="none" opacity="0.55" stroke-linecap="round">
+      <path d="M 100 76 Q 95 92 92 108"/>
+      <path d="M 144 74 Q 149 90 147 108"/>
+      <path d="M 122 70 Q 120 84 121 96"/>
+      <path d="M 80 88 Q 77 98 75 108"/>
+      <path d="M 162 88 Q 165 98 166 108"/>
+    </g>
     <!-- 眉毛 / 眼睛 / 鼻子 / 腮红 / 嘴 -->
-    <g stroke="{_BROW}" stroke-width="3" stroke-linecap="round" fill="none">{_brows(expr)}</g>
+    <g stroke="{_BROW}" stroke-width="2.6" stroke-linecap="round" fill="none">{_brows(expr)}</g>
     {_eyes(expr)}
     <circle cx="120" cy="157" r="1.2" fill="#d9a58c"/>
     {_blush(expr)}
