@@ -1,4 +1,7 @@
-"""SVG 活体数字人：随情绪状态实时变化表情与氛围的原创 Q 版形象。
+"""SVG 活体数字人：随情绪状态实时变化表情与氛围的灰原哀 Q 版形象。
+
+造型取自原作标志特征：茶色短卷发（发尾外翘）、蓝色大眼、
+帝丹小学制服（藏青西装 + 红领结）、手里永远有一本书。
 
 纯代码绘制，无外部资源依赖；眨眼、呼吸、漂浮物均为 CSS 动画。
 表情由情绪状态机驱动：冷淡 / 柔和 / 开心 / 害羞 / 警惕 / 受伤。
@@ -9,13 +12,16 @@ Gradio 的 gr.HTML 会清洗内联 <svg>/<style>，因此把样式内嵌进 SVG 
 
 import base64
 
-_HAIR = "#c69a72"      # 浅茶棕
-_HAIR_DARK = "#a87e58"
+_HAIR = "#bd8763"      # 茶棕（原作标志发色）
+_HAIR_DARK = "#99684a"
 _SKIN = "#ffe9de"
-_IRIS = "#5f7fa8"      # 蓝灰
+_IRIS = "#4a78c0"      # 动漫蓝
+_LASH = "#2c2a33"
 _BROW = "#7a563c"
 _MOUTH = "#b06a5e"
 _BLUSH = "#f2a0a0"
+_NAVY = "#3c4c72"      # 帝丹小学制服
+_RIBBON = "#d13b3b"    # 红领结
 
 _CSS = """
 .ha-aura{animation:haAura 4s ease-in-out infinite}
@@ -68,28 +74,31 @@ def _brows(expr):
 
 
 def _open_eye(cx, lid, glance=0):
-    """睁开的眼睛。lid 越大眼睑垂得越低（越冷淡），glance 为瞳孔侧移（害羞瞥开）。"""
+    """睁开的动漫大眼。lid 越大眼睑垂得越低（越冷淡），glance 为瞳孔侧移（害羞瞥开）。"""
     ix = cx + glance
     return (
-        f'<ellipse cx="{cx}" cy="140" rx="7.5" ry="8.5" fill="#ffffff"/>'
-        f'<ellipse cx="{ix}" cy="141" rx="4.6" ry="5.4" fill="{_IRIS}"/>'
-        f'<circle cx="{ix}" cy="141" r="2.4" fill="#28303c"/>'
-        f'<circle cx="{ix - 1.6}" cy="139.2" r="1.4" fill="#ffffff"/>'
-        f'<path d="M {cx - 8.6} 131.5 Q {cx} 128 {cx + 8.6} 131.5 L {cx + 8.6} {lid} '
-        f'Q {cx} {lid - 3.5} {cx - 8.6} {lid} Z" fill="{_SKIN}"/>'
-        f'<path d="M {cx - 8} 132 Q {cx} 128.6 {cx + 8} 132" stroke="#3a2f2c" '
-        f'stroke-width="2.4" fill="none" stroke-linecap="round"/>'
+        f'<ellipse cx="{cx}" cy="142" rx="8.6" ry="9.8" fill="#ffffff"/>'
+        f'<ellipse cx="{ix}" cy="143" rx="5.2" ry="6.2" fill="{_IRIS}"/>'
+        f'<circle cx="{ix}" cy="143" r="2.6" fill="#23202e"/>'
+        f'<circle cx="{ix - 1.8}" cy="140.6" r="1.7" fill="#ffffff"/>'
+        f'<circle cx="{ix + 1.7}" cy="145.8" r="0.9" fill="#ffffff" opacity="0.85"/>'
+        f'<path d="M {cx - 9.4} 133.5 Q {cx} 129.8 {cx + 9.4} 133.5 L {cx + 9.4} {lid} '
+        f'Q {cx} {lid - 3.8} {cx - 9.4} {lid} Z" fill="{_SKIN}"/>'
+        f'<path d="M {cx - 8.8} 134 Q {cx} 130.4 {cx + 8.8} 134" stroke="{_LASH}" '
+        f'stroke-width="2.6" fill="none" stroke-linecap="round"/>'
+        f'<path d="M {cx + 8.4} 133.6 L {cx + 11} 134.6" stroke="{_LASH}" '
+        f'stroke-width="2" fill="none" stroke-linecap="round"/>'
     )
 
 
 def _eyes(expr):
     if expr == "happy":  # 笑弯眼
         return (
-            '<path d="M 91 140 Q 99 132 107 140" stroke="#3a2f2c" stroke-width="3" '
+            '<path d="M 90.5 142 Q 99 133.5 107.5 142" stroke="#2c2a33" stroke-width="3" '
             'fill="none" stroke-linecap="round"/>'
-            '<path d="M 133 140 Q 141 132 149 140" stroke="#3a2f2c" stroke-width="3" '
+            '<path d="M 132.5 142 Q 141 133.5 149.5 142" stroke="#2c2a33" stroke-width="3" '
             'fill="none" stroke-linecap="round"/>')
-    lid = {"cold": 139.5, "alert": 140.5, "hurt": 138.5, "shy": 138, "soft": 136.5}.get(expr, 138)
+    lid = {"cold": 141.5, "alert": 142.5, "hurt": 140.5, "shy": 140, "soft": 138.5}.get(expr, 140)
     glance = 2.6 if expr == "shy" else 0
     return f'<g class="ha-eyes">{_open_eye(99, lid, glance)}{_open_eye(141, lid, glance)}</g>'
 
@@ -140,29 +149,43 @@ def render_avatar(state, fav_delta=0, mood_delta=0):
 <style>{_CSS}</style>
   <circle class="ha-aura" cx="120" cy="138" r="100" fill="{aura}" style="transform-origin:120px 138px"/>
   <g class="ha-breathe">
-    <!-- 后发 -->
-    <path d="M 60 150 Q 52 72 120 66 Q 188 72 180 150 Q 185 178 168 192 Q 120 204 72 192 Q 55 178 60 150 Z"
-          fill="{_HAIR_DARK}"/>
-    <!-- 身体 -->
-    <path d="M 88 200 Q 120 190 152 200 L 158 246 Q 120 254 82 246 Z" fill="#71839e"/>
-    <path d="M 106 196 L 120 208 L 134 196 L 134 190 L 106 190 Z" fill="#f4f6fa"/>
+    <!-- 后发：波波头 + 发尾外翘（她的标志） -->
+    <path d="M 56 150 Q 48 64 120 58 Q 192 64 184 150 Q 186 170 172 178
+             Q 150 192 120 192 Q 90 192 68 178 Q 54 170 56 150 Z" fill="{_HAIR_DARK}"/>
+    <path d="M 178 140 Q 196 142 202 158 Q 190 156 180 152 Z" fill="{_HAIR_DARK}"/>
+    <path d="M 174 164 Q 192 170 196 188 Q 184 182 172 176 Z" fill="{_HAIR_DARK}"/>
+    <path d="M 62 140 Q 44 142 38 158 Q 50 156 60 152 Z" fill="{_HAIR_DARK}"/>
+    <path d="M 66 164 Q 48 170 44 188 Q 56 182 68 176 Z" fill="{_HAIR_DARK}"/>
+    <!-- 帝丹小学制服：藏青西装 + 白衬衫 + 红领结 -->
+    <path d="M 86 202 Q 120 190 154 202 L 160 248 Q 120 256 80 248 Z" fill="{_NAVY}"/>
+    <path d="M 104 190 L 136 190 L 136 196 L 120 210 L 104 196 Z" fill="#f6f8fb"/>
+    <g fill="{_RIBBON}">
+      <path d="M 120 202 L 109 196 L 109 208 Z"/>
+      <path d="M 120 202 L 131 196 L 131 208 Z"/>
+      <circle cx="120" cy="202" r="2.6"/>
+    </g>
     <!-- 手里的书 -->
-    <g transform="rotate(-7 152 222)">
-      <rect x="138" y="210" width="30" height="22" rx="4" fill="#96585a"/>
-      <rect x="142" y="214" width="22" height="14" rx="2" fill="#e8ded2"/>
+    <g transform="rotate(-7 152 224)">
+      <rect x="138" y="212" width="30" height="22" rx="4" fill="#96585a"/>
+      <rect x="142" y="216" width="22" height="14" rx="2" fill="#e8ded2"/>
     </g>
     <!-- 耳朵 -->
     <ellipse cx="70" cy="140" rx="7" ry="9" fill="{_SKIN}"/>
     <ellipse cx="170" cy="140" rx="7" ry="9" fill="{_SKIN}"/>
     <!-- 脸 -->
     <ellipse cx="120" cy="136" rx="50" ry="46" fill="{_SKIN}"/>
-    <!-- 前发/刘海 -->
-    <path d="M 70 134 Q 64 84 120 78 Q 176 84 170 134 Q 168 112 156 104 Q 159 124 148 130
-             Q 150 108 138 100 Q 138 120 126 126 Q 128 104 116 98 Q 112 118 100 124
-             Q 104 106 92 102 Q 84 116 84 132 Q 76 130 70 134 Z" fill="{_HAIR}"/>
-    <path d="M 74 118 Q 68 150 78 170 Q 86 150 84 126 Z" fill="{_HAIR}"/>
-    <path d="M 166 118 Q 172 150 162 170 Q 154 150 156 126 Z" fill="{_HAIR}"/>
-    <path d="M 120 76 Q 127 60 140 63 Q 128 68 126 79 Z" fill="{_HAIR}"/>
+    <!-- 前发/刘海：侧分碎发 -->
+    <path d="M 70 134 Q 60 80 120 74 Q 180 80 170 134 Q 168 114 158 104 Q 161 126 150 132
+             Q 151 110 141 100 Q 141 122 130 128 Q 131 104 120 98 Q 114 120 102 126
+             Q 105 106 94 102 Q 84 114 83 132 Q 76 130 70 134 Z" fill="{_HAIR}"/>
+    <path d="M 74 116 Q 66 150 78 176 Q 88 152 84 124 Z" fill="{_HAIR}"/>
+    <path d="M 166 116 Q 174 150 162 176 Q 152 152 156 124 Z" fill="{_HAIR}"/>
+    <path d="M 118 74 Q 126 58 140 62 Q 127 67 125 78 Z" fill="{_HAIR}"/>
+    <!-- 发丝纹理 -->
+    <g stroke="{_HAIR_DARK}" stroke-width="1.6" fill="none" opacity="0.55" stroke-linecap="round">
+      <path d="M 86 86 Q 78 108 82 130"/>
+      <path d="M 154 86 Q 162 108 158 130"/>
+    </g>
     <!-- 眉毛 / 眼睛 / 腮红 / 嘴 -->
     <g stroke="{_BROW}" stroke-width="3" stroke-linecap="round" fill="none">{_brows(expr)}</g>
     {_eyes(expr)}

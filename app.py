@@ -104,9 +104,10 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
             membox = gr.Markdown(_memories_md([]))
 
     outputs = [chatbot, msg, avatar, status, fav, inner, membox, engine]
-    send.click(respond, [msg, chatbot, engine], outputs)
-    msg.submit(respond, [msg, chatbot, engine], outputs)
-    clear.click(reset, None, [chatbot, engine, avatar, status, fav, inner, membox])
+    send.click(respond, [msg, chatbot, engine], outputs, show_progress="hidden")
+    msg.submit(respond, [msg, chatbot, engine], outputs, show_progress="hidden")
+    clear.click(reset, None, [chatbot, engine, avatar, status, fav, inner, membox],
+                show_progress="hidden")
 
 if __name__ == "__main__":
     demo.launch()
