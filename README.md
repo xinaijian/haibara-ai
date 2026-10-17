@@ -10,7 +10,8 @@
 - **五段关系阶段**：冷淡戒备 → 初步接纳 → 毒舌熟人 → 有限信任 → 袒露内心，阶段直接注入 System Prompt 驱动语气变化
 - **内心独白**：每轮回复附带一句第一人称 OS，她说出口的，不一定是心里想的
 - **长期记忆**：旧对话溢出上下文窗口时自动压缩为事实清单，她真的"记得"你说过的事
-- **SVG 活体数字人**：纯代码绘制的 Q 版形象（无外部资源），会眨眼、呼吸；表情与氛围光晕随情绪实时联动——被夸时脸红瞥开眼、开心时笑弯眼飘爱心、被冒犯时冷脸警惕、受伤时低落
+- **流式逐字回复**：消息发送瞬间上屏，她思考时气泡先显示"……"，台词随后逐字流出，无需干等整段生成完成
+- **活体数字人**：画师 Q 版立绘 + SVG 氛围层，呼吸浮动、爱心与汗滴特效；表情光晕随情绪实时联动——被夸时脸红、开心时飘爱心、被冒犯时冷脸、受伤时低落
 - **模型无关**：支持任意 OpenAI 兼容 API（智谱 GLM / DeepSeek / GPT-4o / 各类中转……），改三个环境变量即可切换；默认推荐免费的智谱 `glm-5.3-flash`
 - **无 Key 演示模式**：未配置 API Key 时自动降级为脚本演示，界面和状态机照常运转，适合课堂展示
 
@@ -42,7 +43,7 @@ flowchart LR
 pip install -r requirements.txt
 
 # 2. 配置 API：复制 .env.example 为 .env，填入你的 key
-cp .env.example .env
+cp .env.example .env        # Windows PowerShell 用：copy .env.example .env
 
 # 3. 启动网页界面
 python app.py        # 浏览器打开 http://127.0.0.1:7860
@@ -59,20 +60,24 @@ python cli.py
 |---|---|---|
 | `LLM_API_KEY` | API 密钥 | 不填则进入演示模式 |
 | `LLM_BASE_URL` | OpenAI 兼容接口地址 | `https://open.bigmodel.cn/api/paas/v4/` |
-| `LLM_MODEL` | 模型名 | `glm-4-flash`（智谱，永久免费） |
+| `LLM_MODEL` | 模型名 | `glm-5.3-flash`（智谱，免费） |
 
-免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。`glm-4-flash` 与 `glm-4.7-flash` 均可免费调用（后者高峰期限流 429 时换回前者）。
+免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。默认使用免费的 `glm-5.3-flash`；若高峰期遇到限流（429），可在 `.env` 中把 `LLM_MODEL` 改为 `glm-4-flash`。
 
 ## 项目结构
 
 ```
 haibara-ai/
-├── app.py          # Gradio 网页界面
-├── avatar.py       # SVG 活体数字人（表情随情绪联动）
+├── app.py          # Gradio 网页界面（流式输出 + 情感面板）
+├── avatar.py       # 数字人渲染：画师立绘 + SVG 情绪特效层
 ├── cli.py          # 终端试聊工具（调人设用）
-├── engine.py       # 对话引擎：LLM 调用、状态解析、长期记忆
+├── engine.py       # 对话引擎：LLM 调用、流式解析、状态更新、长期记忆
 ├── character.py    # 灰原哀角色卡 + System Prompt 模板
 ├── state.py        # 情绪状态机（好感度 / 心情 / 阶段）
+├── assets/
+│   └── avatar.jpg  # 数字人 Q 版立绘
+├── docs/
+│   └── demo.png    # 界面演示截图
 ├── .env.example    # 配置模板
 └── requirements.txt
 ```
