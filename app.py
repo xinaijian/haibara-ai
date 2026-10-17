@@ -49,15 +49,20 @@ def respond(user_text, chat_history, engine):
         yield (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
                _memories_md(engine.memories), engine)
         return
+    # 第 0 帧：必须在任何网络调用之前 yield——消息立即上屏、输入框立即清空、
+    # 她的气泡先显示思考占位（Gradio 6 会过滤空 content，占位必须非空）
     history = chat_history + [
         {"role": "user", "content": user_text},
-        {"role": "assistant", "content": ""},
+        {"role": "assistant", "content": "……"},
     ]
+    yield (history, "", gr.update(), gr.update(), gr.update(),
+           gr.update(), gr.update(), engine)
+
     final = None
     try:
         for r in engine.reply_stream(user_text):
             if "partial" in r:
-                # 流式阶段：只逐字更新对话气泡，右侧面板保持不动
+                # 流式阶段：思考占位被逐字台词替换，右侧面板保持不动
                 history[-1]["content"] = r["partial"]
                 yield (history, "", gr.update(), gr.update(), gr.update(),
                        gr.update(), gr.update(), engine)
