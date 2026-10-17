@@ -2,7 +2,7 @@
 
 造型参照官方风 Q 版图重绘：巨大头身比、茶棕蓬松短发（发尾外翘、
 刘海中垂一缕）、蓝色大眼（粗黑上眼线、外眼角微垂）、白大褂 + 红衬衫、
-背手站姿。纯代码绘制，无外部资源依赖；眨眼、呼吸、漂浮物均为 CSS 动画。
+胸部以上半身构图。纯代码绘制，无外部资源依赖；眨眼、呼吸、漂浮物均为 CSS 动画。
 表情由情绪状态机驱动：冷淡 / 柔和 / 开心 / 害羞 / 警惕 / 受伤。
 
 Gradio 的 gr.HTML 会清洗内联 <svg>/<style>，因此把样式内嵌进 SVG 本体，
@@ -22,8 +22,6 @@ _MOUTH = "#a35a50"
 _BLUSH = "#f2a0a0"
 _COAT = "#f7f5f0"      # 白大褂
 _SHIRT = "#a83838"     # 红衬衫
-_SHORTS = "#6b4f3f"
-_SHOE = "#8a3a3a"
 _LINE = "#2c2833"      # 服装描边
 
 _CSS = """
@@ -163,28 +161,22 @@ def render_avatar(state, fav_delta=0, mood_delta=0):
     """根据当前情绪状态渲染数字人 HTML（SVG 以 data URI 形式内嵌，规避清洗）。"""
     expr = _expression(state, fav_delta, mood_delta)
     aura = _aura_color(state.mood)
-    svg = f"""<svg viewBox="0 0 240 270" width="210" height="236" xmlns="http://www.w3.org/2000/svg">
+    svg = f"""<svg viewBox="0 0 240 240" width="200" height="200" xmlns="http://www.w3.org/2000/svg">
 <style>{_CSS}</style>
-  <circle class="ha-aura" cx="120" cy="140" r="106" fill="{aura}" style="transform-origin:120px 140px"/>
+  <circle class="ha-aura" cx="120" cy="134" r="100" fill="{aura}" style="transform-origin:120px 134px"/>
   <g class="ha-breathe">
     <!-- 后发：顺滑圆穹顶 -->
     <path d="M 54 142 Q 40 100 62 66 Q 58 30 96 22 Q 120 10 146 22 Q 184 30 180 66
              Q 202 100 188 142 Q 184 158 170 160 Q 120 170 70 160 Q 56 158 54 142 Z"
           fill="{_HAIR}"/>
-    <!-- 白大褂 + 红衬衫（背手站姿） -->
-    <path d="M 100 192 Q 120 186 140 192 L 142 224 Q 120 230 98 224 Z" fill="{_SHIRT}"/>
-    <path d="M 98 192 Q 82 198 80 218 L 82 244 Q 94 250 104 244 L 106 214 Q 104 200 102 194 Z"
+    <!-- 白大褂 + 红衬衫（半身构图，衣摆自然出画） -->
+    <path d="M 100 192 Q 120 186 140 192 L 142 240 Q 120 246 98 240 Z" fill="{_SHIRT}"/>
+    <path d="M 98 192 Q 82 198 80 218 L 82 246 Q 94 252 104 246 L 106 214 Q 104 200 102 194 Z"
           fill="{_COAT}" stroke="{_LINE}" stroke-width="2.5"/>
-    <path d="M 142 192 Q 158 198 160 218 L 158 244 Q 146 250 136 244 L 134 214 Q 136 200 138 194 Z"
+    <path d="M 142 192 Q 158 198 160 218 L 158 246 Q 146 252 136 246 L 134 214 Q 136 200 138 194 Z"
           fill="{_COAT}" stroke="{_LINE}" stroke-width="2.5"/>
     <path d="M 106 190 L 120 200 L 134 190 L 134 186 L 106 186 Z" fill="{_COAT}"/>
-    <rect x="86" y="224" width="12" height="10" rx="2" fill="none" stroke="{_LINE}" stroke-width="2"/>
-    <path d="M 104 224 L 136 224 L 136 237 Q 128 239 124 235 L 120 231 L 116 235 Q 112 239 104 237 Z"
-          fill="{_SHORTS}"/>
-    <rect x="106" y="238" width="8" height="14" rx="3" fill="{_SKIN}"/>
-    <rect x="126" y="238" width="8" height="14" rx="3" fill="{_SKIN}"/>
-    <ellipse cx="109" cy="254" rx="11" ry="6" fill="{_SHOE}"/>
-    <ellipse cx="131" cy="254" rx="11" ry="6" fill="{_SHOE}"/>
+    <rect x="88" y="216" width="12" height="10" rx="2" fill="none" stroke="{_LINE}" stroke-width="2"/>
     <!-- 脸 -->
     <ellipse cx="120" cy="132" rx="62" ry="52" fill="{_SKIN}"/>
     <!-- 侧发：沿脸颊垂落到下巴，发梢波浪外翘 -->
@@ -226,4 +218,4 @@ def render_avatar(state, fav_delta=0, mood_delta=0):
     b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return (f'<div style="display:flex;justify-content:center;padding:4px 0 0">'
             f'<img alt="avatar" src="data:image/svg+xml;base64,{b64}" '
-            f'style="width:210px;height:236px"/></div>')
+            f'style="width:200px;height:200px"/></div>')
