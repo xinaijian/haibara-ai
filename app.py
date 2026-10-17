@@ -5,6 +5,7 @@
 
 import gradio as gr
 
+from avatar import render_avatar
 from engine import ChatEngine
 
 _TAG_EMOJI = {"心动": "💗", "温暖": "☕", "开心": "✨", "受伤": "🩹", "难过": "🌧️"}
@@ -45,7 +46,7 @@ def respond(user_text, chat_history, engine):
     user_text = (user_text or "").strip()
     s = engine.state
     if not user_text:
-        return (chat_history, "", _status_md(s), s.favorability, "",
+        return (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
                 _memories_md(engine.memories), engine)
     try:
         r = engine.reply(user_text)
@@ -54,21 +55,22 @@ def respond(user_text, chat_history, engine):
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": f"⚠️ {e}"},
         ]
-        return (chat_history, "", _status_md(s), s.favorability, "",
+        return (chat_history, "", render_avatar(s), _status_md(s), s.favorability, "",
                 _memories_md(engine.memories), engine)
     chat_history = chat_history + [
         {"role": "user", "content": user_text},
         {"role": "assistant", "content": r["text"]},
     ]
     s = r["state"]
-    return (chat_history, "", _status_md(s, r["fav_delta"], r["mood_delta"]),
-            s.favorability, r["inner_voice"], _memories_md(engine.memories), engine)
+    return (chat_history, "", render_avatar(s, r["fav_delta"], r["mood_delta"]),
+            _status_md(s, r["fav_delta"], r["mood_delta"]), s.favorability,
+            r["inner_voice"], _memories_md(engine.memories), engine)
 
 
 def reset():
     eng = ChatEngine()
     s = eng.state
-    return [], eng, _status_md(s), s.favorability, "", _memories_md([])
+    return [], eng, render_avatar(s), _status_md(s), s.favorability, "", _memories_md([])
 
 
 with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
@@ -85,6 +87,7 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
                 clear = gr.Button("重置对话")
 
         with gr.Column(scale=1):
+            avatar = gr.HTML(render_avatar(ChatEngine().state))
             status = gr.Markdown(_status_md(ChatEngine().state))
             fav = gr.Slider(0, 100, value=10, step=1, label="好感度进度",
                             interactive=False, show_label=True)
@@ -92,10 +95,10 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
                                placeholder="她说出口的，不一定是心里想的……")
             membox = gr.Markdown(_memories_md([]))
 
-    outputs = [chatbot, msg, status, fav, inner, membox, engine]
+    outputs = [chatbot, msg, avatar, status, fav, inner, membox, engine]
     send.click(respond, [msg, chatbot, engine], outputs)
     msg.submit(respond, [msg, chatbot, engine], outputs)
-    clear.click(reset, None, [chatbot, engine, status, fav, inner, membox])
+    clear.click(reset, None, [chatbot, engine, avatar, status, fav, inner, membox])
 
 if __name__ == "__main__":
     demo.launch()
