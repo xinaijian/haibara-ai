@@ -75,19 +75,28 @@ def respond(user_text, chat_history, engine):
         return
     s = final["state"]
     history[-1]["content"] = final["text"]
+    engine.save()
     yield (history, "", render_avatar(s, final["fav_delta"], final["mood_delta"]),
            _status_md(s, final["fav_delta"], final["mood_delta"]), s.favorability,
            final["inner_voice"], _memories_md(engine.memories), engine)
 
 
-def reset():
+def _start_engine():
+    """启动/重置时新建引擎，并尝试载入本地存档。"""
     eng = ChatEngine()
+    eng.load()
+    return eng
+
+
+def reset():
+    eng = _start_engine()
     s = eng.state
-    return [], eng, render_avatar(s), _status_md(s), s.favorability, "", _memories_md([])
+    return [], eng, render_avatar(s), _status_md(s), s.favorability, "", _memories_md(eng.memories)
 
 
 with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
-    engine = gr.State(ChatEngine())
+    _initial = _start_engine()
+    engine = gr.State(_initial)
 
     gr.Markdown("# 灰原哀 · 情感状态智能体\n好感度与心情会随对话实时变化，每一次真诚的交流都会让她的防线松动一点。")
 
@@ -100,13 +109,13 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
                 clear = gr.Button("重置对话")
 
         with gr.Column(scale=1):
-            avatar = gr.HTML(render_avatar(ChatEngine().state))
-            status = gr.Markdown(_status_md(ChatEngine().state))
-            fav = gr.Slider(0, 100, value=10, step=1, label="好感度进度",
-                            interactive=False, show_label=True)
+            avatar = gr.HTML(render_avatar(_initial.state))
+            status = gr.Markdown(_status_md(_initial.state))
+            fav = gr.Slider(0, 100, value=_initial.state.favorability, step=1,
+                            label="好感度进度", interactive=False, show_label=True)
             inner = gr.Textbox(label="💭 内心独白", interactive=False, lines=5,
                                placeholder="她说出口的，不一定是心里想的……")
-            membox = gr.Markdown(_memories_md([]))
+            membox = gr.Markdown(_memories_md(_initial.memories))
 
     outputs = [chatbot, msg, avatar, status, fav, inner, membox, engine]
     send.click(respond, [msg, chatbot, engine], outputs, show_progress="hidden")

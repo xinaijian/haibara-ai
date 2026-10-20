@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from character import build_system_prompt
 from state import EmotionState
+from store import DEFAULT_STORE, load_state, save_state
 
 load_dotenv()
 
@@ -42,13 +43,28 @@ def _memory_tag(fav_delta, mood_delta):
 
 
 class ChatEngine:
-    def __init__(self, window=24):
+    def __init__(self, window=24, store_path=DEFAULT_STORE):
         self.state = EmotionState()
         self.history = []          # 近期对话 [{"role": ..., "content": ...}]
         self.facts = []            # 长期记忆：事实清单
         self.memories = []         # 情感瞬间：[{"tag": ..., "note": ...}]
         self.window = window
+        self.store_path = store_path
         self._client = None
+
+    # ---- 持久化：把长期状态落盘，重启后"她"还记得 ----
+    def save(self):
+        save_state(self.state, self.facts, self.memories, self.store_path)
+
+    def load(self):
+        """从存档恢复长期状态；无存档则保持初始态。返回是否成功。"""
+        state, facts, memories = load_state(self.store_path)
+        if state is None:
+            return False
+        self.state = state
+        self.facts = facts
+        self.memories = memories
+        return True
 
     @property
     def client(self):
@@ -357,7 +373,10 @@ class ChatEngine:
                 temperature=0.3,
                 max_tokens=300,
             )
-            data = json.loads(out[out.find("["): out.rfind("]") + 1])
+            start, end = out.find("["), out.rfind("]")
+            if start == -1 or end <= start:
+                return  # 模型没按格式返回数组，放弃本次提取
+            data = json.loads(out[start:end + 1])
             if isinstance(data, list):
                 for f in data:
                     f = str(f).strip()
