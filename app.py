@@ -42,6 +42,23 @@ def _memories_md(memories):
     return "\n\n".join(lines)
 
 
+def _error_text(e):
+    """把底层异常翻译成用户能看懂的一句话。"""
+    name = type(e).__name__
+    msg = str(e)
+    if isinstance(e, RuntimeError) and "API Key" in msg:
+        return msg  # 缺 Key 的提示本身已足够友好
+    if "Timeout" in name or "timed out" in msg.lower():
+        return "她走神太久了（请求超时）……再发一次试试？"
+    if "Connection" in name or "ConnectionError" in name or "connection" in msg.lower():
+        return "网络不太稳定，没连上她的思绪。检查网络后再试一次。"
+    if "RateLimit" in name or "429" in msg:
+        return "她今天被问得有点多（接口限流）。稍等片刻再试，或在 .env 里把 LLM_MODEL 换成 glm-4-flash。"
+    if "Authentication" in name or "401" in msg:
+        return "API Key 无效或过期，请检查 .env 里的 LLM_API_KEY。"
+    return f"出了点小状况：{msg}"
+
+
 def respond(user_text, chat_history, engine):
     user_text = (user_text or "").strip()
     s = engine.state
@@ -69,7 +86,7 @@ def respond(user_text, chat_history, engine):
             else:
                 final = r
     except Exception as e:
-        history[-1]["content"] = f"⚠️ {e}"
+        history[-1]["content"] = f"⚠️ {_error_text(e)}"
         yield (history, "", render_avatar(s), _status_md(s), s.favorability, "",
                _memories_md(engine.memories), engine)
         return
@@ -124,4 +141,4 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
                 show_progress="hidden")
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(inbrowser=True)  # 启动后自动打开浏览器

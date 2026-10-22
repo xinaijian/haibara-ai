@@ -80,6 +80,8 @@ class ChatEngine:
             self._client = OpenAI(
                 api_key=api_key,
                 base_url=os.getenv("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
+                timeout=60.0,   # 单次请求超时，避免网络卡住时对话永远停在"……"
+                max_retries=1,  # 网络抖动自动重试一次
             )
         return self._client
 
@@ -248,28 +250,23 @@ class ChatEngine:
                     pass
         return text or "……", patch
 
-    def reply(self, user_text):
-        """完整跑一轮对话，返回 {text, inner_voice, fav/mood_delta, memory, state}。"""
-        if not os.getenv("LLM_API_KEY"):
-            return self._mock_reply(user_text)
-
-        # 单次调用：台词、内心、状态、记忆出自同一个"脑子"，才有口是心非的张力
-        system = build_system_prompt(self.state, self.facts, self.memories)
-        messages = [{"role": "system", "content": system}]
+    def _build_messages(self, user_text):
+        """组装本轮对话消息：System 人设 + 窗口内历史 + 用户输入。"""
+        messages = [{"role": "system", "content": build_system_prompt(
+            self.state, self.facts, self.memories)}]
         messages += self.history[-self.window:]
         messages.append({"role": "user", "content": user_text})
+        return messages
 
-        raw = self._chat(messages, json_mode=True)
-        text, patch = self._parse(raw)
+    def _finalize(self, user_text, text, patch):
+        """把本轮结果落到状态机、记忆和历史上，返回统一的结果 dict。"""
         if not text:
             text = "……"
         self.state.apply(patch["favorability_delta"], patch["mood_delta"])
         self._remember(patch)
-
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": text})
         self._consolidate()
-
         return {
             "text": text,
             "inner_voice": patch["inner_voice"],
@@ -279,6 +276,16 @@ class ChatEngine:
             "state": self.state,
         }
 
+    def reply(self, user_text):
+        """完整跑一轮对话，返回 {text, inner_voice, fav/mood_delta, memory, state}。"""
+        if not os.getenv("LLM_API_KEY"):
+            return self._mock_reply(user_text)
+
+        # 单次调用：台词、内心、状态、记忆出自同一个"脑子"，才有口是心非的张力
+        raw = self._chat(self._build_messages(user_text), json_mode=True)
+        text, patch = self._parse(raw)
+        return self._finalize(user_text, text, patch)
+
     def reply_stream(self, user_text):
         """流式版 reply：先逐字 yield {"partial": 台词前缀}，最后 yield 完整结果 dict。"""
         if not os.getenv("LLM_API_KEY"):
@@ -287,14 +294,9 @@ class ChatEngine:
             yield r
             return
 
-        system = build_system_prompt(self.state, self.facts, self.memories)
-        messages = [{"role": "system", "content": system}]
-        messages += self.history[-self.window:]
-        messages.append({"role": "user", "content": user_text})
-
         raw = ""
         last = ""
-        for chunk in self._chat_stream(messages, json_mode=True):
+        for chunk in self._chat_stream(self._build_messages(user_text), json_mode=True):
             raw += chunk
             partial = self._partial_reply(raw)
             if partial != last:
@@ -303,22 +305,8 @@ class ChatEngine:
 
         text, patch = self._parse(raw)
         if not text:
-            text = last.strip() or "……"
-        self.state.apply(patch["favorability_delta"], patch["mood_delta"])
-        self._remember(patch)
-
-        self.history.append({"role": "user", "content": user_text})
-        self.history.append({"role": "assistant", "content": text})
-        self._consolidate()
-
-        yield {
-            "text": text,
-            "inner_voice": patch["inner_voice"],
-            "memory": patch["memory"],
-            "fav_delta": patch["favorability_delta"],
-            "mood_delta": patch["mood_delta"],
-            "state": self.state,
-        }
+            text = last.strip()  # 兜底：解析失败就用流式期间已展示的台词
+        yield self._finalize(user_text, text, patch)
 
     def _remember(self, patch):
         """高情绪波动的瞬间存入"心里的余温"，优先保留强烈记忆。"""

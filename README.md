@@ -62,7 +62,9 @@ python cli.py
 | `LLM_BASE_URL` | OpenAI 兼容接口地址 | `https://open.bigmodel.cn/api/paas/v4/` |
 | `LLM_MODEL` | 模型名 | `glm-5.3-flash`（智谱，免费） |
 
-免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。默认使用免费的 `glm-5.3-flash`；若高峰期遇到限流（429），可在 `.env` 中把 `LLM_MODEL` 改为 `glm-4-flash`。
+免费 Key 获取：注册 [智谱开放平台](https://open.bigmodel.cn) → 控制台「API Keys」→ 添加并复制。
+
+> 💡 **关于她的"思考时间"**：`glm-5.3-flash` 是深度思考型模型，开口前会先思考 5~15 秒（界面上表现为气泡里的"……"），换来的是更细腻的人设与情绪表达——就像本人那句"……让我想想"。想要即问即答的爽快节奏，可在 `.env` 中把 `LLM_MODEL` 改为 `glm-4-flash`（首字 <1 秒，扮演细腻度略降）；高峰期遇到限流（429）时也可临时换用它。
 
 ## 项目结构
 
