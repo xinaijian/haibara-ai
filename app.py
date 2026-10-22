@@ -106,7 +106,10 @@ def _start_engine():
 
 
 def reset():
+    """重置对话：清空聊天记录，但保留关系进度与长期记忆（立即落盘）。"""
     eng = _start_engine()
+    eng.history = []
+    eng.save()
     s = eng.state
     return [], eng, render_avatar(s), _status_md(s), s.favorability, "", _memories_md(eng.memories)
 
@@ -119,7 +122,7 @@ with gr.Blocks(title="灰原哀 · 情感智能体") as demo:
 
     with gr.Row():
         with gr.Column(scale=3):
-            chatbot = gr.Chatbot(height=560, label="对话")
+            chatbot = gr.Chatbot(height=560, label="对话", value=_initial.history)
             msg = gr.Textbox(placeholder="说点什么……（回车发送）", show_label=False)
             with gr.Row():
                 send = gr.Button("发送", variant="primary")

@@ -52,18 +52,20 @@ class ChatEngine:
         self.store_path = store_path
         self._client = None
 
-    # ---- 持久化：把长期状态落盘，重启后"她"还记得 ----
+    # ---- 持久化：把长期状态和对话历史落盘，重启后"她"完整记得 ----
     def save(self):
-        save_state(self.state, self.facts, self.memories, self.store_path)
+        save_state(self.state, self.facts, self.memories, self.store_path,
+                   self.history)
 
     def load(self):
-        """从存档恢复长期状态；无存档则保持初始态。返回是否成功。"""
-        state, facts, memories = load_state(self.store_path)
+        """从存档恢复长期状态与对话历史；无存档则保持初始态。返回是否成功。"""
+        state, facts, memories, history = load_state(self.store_path)
         if state is None:
             return False
         self.state = state
         self.facts = facts
         self.memories = memories
+        self.history = list(history)
         return True
 
     @property
